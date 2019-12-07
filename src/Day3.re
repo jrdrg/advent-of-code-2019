@@ -1,4 +1,5 @@
 exception ParseException;
+exception InvalidWireException;
 
 let input =
   "R1009,D335,L942,D733,L398,U204,L521,D347,L720,U586,R708,D746,L292,U416,L824,U20,R359,D828,R716,U895,L498,D671,L325,D68,L667,U134,L435,D44,R801,U654,R188,U542,L785,D318,L806,U602,L465,U239,R21,U571,R653,U436,L52,U380,R446,D960,R598,U590,L47,U972,L565,D281,R790,U493,R864,D396,R652,D775,L939,D284,R554,U629,L842,D837,R554,D795,R880,D301,R948,U974,L10,D898,R588,D743,L334,U59,L413,U511,L132,U771,R628,D805,R465,D561,R18,D169,L580,D99,L508,U964,L870,D230,L472,U897,L85,U306,L103,U322,L637,U464,R129,D514,R454,U479,R801,U18,R929,U181,L113,D770,L173,D124,L122,U481,L666,D942,L534,U608,R90,U576,L641,U249,L857,U197,R783,D92,L938,D192,L698,D862,R995,U12,R766,D323,R934,U315,R956,D234,R983,D246,L153,U26,L779,D628,R174,D385,L758,D486,R132,U414,R915,D511,L152,D309,L708,D755,L679,D166,L699,U734,R55,D224,L582,U798,L348,U219,L304,U621,L788,D538,R781,D509,R486,U581,R759,D892,R16,D552,L82,D618,L309,D610,L645,U146,L328,U569,L307,D385,L249,D231,R928,U681,R384,D337,R715,D798,L788,D604,R517,U766,R368,U430,L49,U236,R621,U656,R997,U268,L18,D789,L935,D87,L670,U35,R463,D71,R268,U728,R693,D863,R656,D654,L350,U796,L72,U562,R56,U10,L651,D751,L557,D518,R901,D741,R787,D332,R723,D980,R206,U670,R645,D927,L641,D863,R478,D568,L858,D990,L124,D864,L162,U361,L407,U674,R508,D284,L675,D794,L138,U55,L781,U37,R956,D364,L111,U721,L91,U559,L852,U351,R994,U446,L162,D345,R92,D941,R572,U185,R615,D590,R459,D313,R127,D315,R96,U751,R210,D620,L790,U826,R410,D652,R549,D698,L805,U814,L364,U905,L96,U997,L689
@@ -6,14 +7,52 @@ L1008,D451,L146,D628,R877,U486,L464,U815,L119,U208,R686,U477,L510,D353,R189,D437
   |> Js.String.split("\n")
   |> Array.map(Js.String.split(","));
 
+type wire =
+  | Wire1
+  | Wire2;
+
 type minIntersection =
   | NotFound
   | Found((int, int), int);
 
+type minSteps =
+  | NotFound
+  | Found(int);
+
+type move = {
+  wire,
+  steps: array(int),
+};
+
 type state = {
   current: (int, int),
-  segments: Belt.Map.String.t(int),
+  stepCount: int,
+  segments: Belt.Map.String.t(move),
   minIntersection,
+  minSteps,
+};
+
+let wireCount = 2;
+
+let intToWire = (wire: int) =>
+  switch (wire) {
+  | 1 => Wire1
+  | 2 => Wire2
+  | _ => raise(InvalidWireException)
+  };
+
+let getSteps = (move: move, wire: wire) => {
+  switch (wire) {
+  | Wire1 => move.steps[0]
+  | Wire2 => move.steps[1]
+  };
+};
+let setSteps = (move: move, wire: wire, value: int) => {
+  switch (wire) {
+  | Wire1 => move.steps[0] = value
+  | Wire2 => move.steps[1] = value
+  };
+  move;
 };
 
 let distanceFromCenter = (x, y) => abs(x) + abs(y);
@@ -25,35 +64,76 @@ let addDirection = ((px, py): (int, int), (dx, dy): (int, int)) => (
   py + dy,
 );
 
-let determineIntersection = (state: state, (x, y): (int, int), wire: int) => {
+let determineIntersection =
+    (state: state, (x, y) as position: (int, int), wire: wire) => {
+  let state = {...state, stepCount: state.stepCount + 1};
   let mapKey = key(x, y);
-  switch (Belt.Map.String.get(state.segments, mapKey), state.minIntersection) {
-  | (Some(w), NotFound)
-  | (Some(w), Found(_, _)) when w === wire => {...state, current: (x, y)}
+  let setSegment = Belt.Map.String.set(state.segments, mapKey);
 
-  | (Some(w), Found(_, minDistance))
-      when distanceFromCenter(x, y) < minDistance =>
-    let distance = distanceFromCenter(x, y);
-    Js.log(Printf.sprintf("New min distance %d at %d,%d", distance, x, y));
-    {
-      current: (x, y),
-      segments: Belt.Map.String.set(state.segments, mapKey, w),
-      minIntersection: Found((x, y), distance),
-    };
-  | (Some(w), NotFound) =>
-    let distance = distanceFromCenter(x, y);
-    {
-      current: (x, y),
-      segments: Belt.Map.String.set(state.segments, mapKey, w),
-      minIntersection: Found((x, y), distance),
-    };
+  let distance = distanceFromCenter(x, y);
+  let sumSteps = (m: move) => getSteps(m, Wire1) + getSteps(m, Wire2);
 
-  | (None, _)
-  | (Some(_), Found(_, _)) => {
+  let updateMinSteps = (minSteps, steps) => {
+    switch (minSteps) {
+    | NotFound => Found(steps)
+    | Found(stepCount) => Found(min(steps, stepCount))
+    };
+  };
+
+  let updateMinIntersection = (move, minSteps) => {
+    let steps = sumSteps(move);
+    {
+      ...state,
+      current: position,
+      segments: setSegment(move),
+      minIntersection: Found(position, distance),
+      minSteps: updateMinSteps(minSteps, steps),
+    };
+  };
+
+  switch (
+    Belt.Map.String.get(state.segments, mapKey),
+    state.minIntersection,
+    state.minSteps,
+  ) {
+  // same wire, don't do anything
+  | (Some(move), NotFound, _)
+  | (Some(move), Found(_, _), _) when move.wire === wire => {
       ...state,
       current: (x, y),
-      segments: Belt.Map.String.set(state.segments, mapKey, wire),
     }
+
+  // intersection, distance < min distance
+  | (Some(move), Found(_, minDistance), minSteps)
+      when distance < minDistance =>
+    let move = setSteps(move, wire, state.stepCount);
+    updateMinIntersection(move, minSteps);
+
+  // intersection, no min distance
+  | (Some(move), NotFound, minSteps) =>
+    let move = setSteps(move, wire, state.stepCount);
+    updateMinIntersection(move, minSteps);
+
+  // distance isn't < minDistance
+  | (Some(move), Found(_, _), minSteps) =>
+    let move = setSteps(move, wire, state.stepCount);
+    let steps = sumSteps(move);
+    {
+      ...state,
+      current: position,
+      segments: setSegment(move),
+      minSteps: updateMinSteps(minSteps, steps),
+    };
+
+  // we haven't previously seen this point yet
+  | (None, _, _) =>
+    let move =
+      setSteps(
+        {steps: Array.make(wireCount, 0), wire},
+        wire,
+        state.stepCount,
+      );
+    {...state, current: (x, y), segments: setSegment(move)};
   };
 };
 
@@ -62,16 +142,16 @@ let rec updateMap =
           {current} as state: state,
           direction: (int, int),
           amount: int,
-          wire: int,
+          wire: wire,
         ) => {
-  //   Js.log(direction);
   switch (amount, direction) {
   | (0, _) => state
+
   | (a, (x, y)) when a < 0 =>
-    // let s = Belt.Map.String.set(state.segments, key(x, y), wire);
     let s =
       determineIntersection(state, addDirection(current, (x, y)), wire);
     updateMap(s, direction, amount + 1, wire);
+
   | (a, (x, y)) when a > 0 =>
     let s =
       determineIntersection(state, addDirection(current, (x, y)), wire);
@@ -90,7 +170,7 @@ let directionToNumbers = (direction: string) => {
   };
 };
 
-let processMovement = (state: state, movement: string) => {
+let processMovement = (state: state, movement: string, wire: wire) => {
   switch (Js.Re.exec_(Js.Re.fromString("([RDLU])(\d+)"), movement)) {
   | Some(x) =>
     switch (Js.Re.captures(x) |> Array.map(Js.Nullable.toOption)) {
@@ -100,13 +180,12 @@ let processMovement = (state: state, movement: string) => {
           state,
           directionToNumbers(direction),
           int_of_string(distance),
+          wire,
         );
       state;
     | _ => raise(ParseException)
     }
-  | None =>
-    Js.log("???");
-    raise(ParseException);
+  | None => raise(ParseException)
   };
 };
 
@@ -117,18 +196,20 @@ let processWires =
       segments: Belt.Map.String.empty,
       minIntersection: NotFound,
       current: (0, 0),
+      stepCount: 0,
+      minSteps: NotFound,
     };
     let s =
       wire1
       |> Array.fold_left(
-           (state, move) => processMovement(state, move, 1),
+           (state, move) => processMovement(state, move, Wire1),
            s,
          );
     let s =
       wire2
       |> Array.fold_left(
-           (state, move) => processMovement(state, move, 2),
-           {...s, current: (0, 0)},
+           (state, move) => processMovement(state, move, Wire2),
+           {...s, current: (0, 0), stepCount: 0},
          );
     s;
   | _ => raise(ParseException)
@@ -137,5 +218,10 @@ let processWires =
 switch (processWires.minIntersection) {
 | Found((x, y), distance) =>
   Js.log(Printf.sprintf("Part 1: %d at %d,%d", distance, x, y))
+| _ => Js.log("Not found!")
+};
+
+switch (processWires.minSteps) {
+| Found(steps) => Js.log(Printf.sprintf("Part 2: %d", steps))
 | _ => Js.log("Not found!")
 };
