@@ -3,6 +3,7 @@
 
 var List = require("bs-platform/lib/js/list.js");
 var $$Array = require("bs-platform/lib/js/array.js");
+var Caml_array = require("bs-platform/lib/js/caml_array.js");
 var Caml_int32 = require("bs-platform/lib/js/caml_int32.js");
 var Caml_format = require("bs-platform/lib/js/caml_format.js");
 var Caml_exceptions = require("bs-platform/lib/js/caml_exceptions.js");
@@ -73,20 +74,20 @@ function splitLayers(_$staropt$star, _$staropt$star$1, width, height, _digits) {
               layers$3
             ];
           } else {
-            var row = /* :: */[
+            var sameRow = /* :: */[
               next,
               currentRow
             ];
-            var layer = /* :: */[
-              row,
+            var sameLayer$1 = /* :: */[
+              sameRow,
               rows
             ];
             var layers$4 = /* :: */[
-              layer,
+              sameLayer$1,
               layers$1
             ];
             match$2 = /* tuple */[
-              layer,
+              sameLayer$1,
               layers$4
             ];
           }
@@ -101,16 +102,16 @@ function splitLayers(_$staropt$star, _$staropt$star$1, width, height, _digits) {
           next,
           /* [] */0
         ];
-        var layer$1 = /* :: */[
+        var layer = /* :: */[
           layer_000,
           /* [] */0
         ];
         _digits = rest;
         _$staropt$star$1 = /* :: */[
-          layer$1,
+          layer,
           /* [] */0
         ];
-        _$staropt$star = layer$1;
+        _$staropt$star = layer;
         continue ;
       }
       
@@ -173,6 +174,67 @@ function part1(layers) {
 
 console.log("Part 1: ", part1(layers));
 
+function layerToArray(layer) {
+  return $$Array.of_list(List.map($$Array.of_list, layer));
+}
+
+function layersToArray(layers) {
+  return $$Array.map(layerToArray, $$Array.of_list(layers));
+}
+
+var layerArrs = $$Array.map(layerToArray, $$Array.of_list(layers));
+
+var ColorException = Caml_exceptions.create("Day8-AdventOfCode2019.ColorException");
+
+function determineColor(frontPixel, rearPixel) {
+  switch (frontPixel) {
+    case 0 :
+        return 0;
+    case 1 :
+        return 1;
+    case 2 :
+        return rearPixel;
+    default:
+      throw [
+            ColorException,
+            frontPixel,
+            rearPixel
+          ];
+  }
+}
+
+function flattenImage(width, height, image) {
+  var layers = List.rev(image);
+  return $$Array.fold_left((function (flattened, layer) {
+                return $$Array.mapi((function (cIndex, row) {
+                              return $$Array.mapi((function (rIndex, pixel) {
+                                            var front = Caml_array.caml_array_get(Caml_array.caml_array_get(layer, cIndex), rIndex);
+                                            return determineColor(front, pixel);
+                                          }), row);
+                            }), flattened);
+              }), Caml_array.caml_make_vect(height, Caml_array.caml_make_vect(width, 2)), $$Array.map(layerToArray, $$Array.of_list(layers)));
+}
+
+var flattened = flattenImage(25, 6, layers);
+
+function toString(image) {
+  return $$Array.map((function (row) {
+                return $$Array.map((function (pixel) {
+                                if (pixel !== 0) {
+                                  if (pixel !== 1) {
+                                    return "?";
+                                  } else {
+                                    return "#";
+                                  }
+                                } else {
+                                  return " ";
+                                }
+                              }), row).join("");
+              }), image);
+}
+
+console.log(toString(flattened));
+
 exports.ParseLayerException = ParseLayerException;
 exports.input = input;
 exports.splitLayers = splitLayers;
@@ -180,4 +242,12 @@ exports.layers = layers;
 exports.digitCount = digitCount;
 exports.findFewestZeros = findFewestZeros;
 exports.part1 = part1;
+exports.layerToArray = layerToArray;
+exports.layersToArray = layersToArray;
+exports.layerArrs = layerArrs;
+exports.ColorException = ColorException;
+exports.determineColor = determineColor;
+exports.flattenImage = flattenImage;
+exports.flattened = flattened;
+exports.toString = toString;
 /* input Not a pure module */

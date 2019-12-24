@@ -29,39 +29,24 @@ let rec splitLayers =
       switch (List.length(currentRow), List.length(currentLayer)) {
       // New layer, start with new digit in new row
       | (rLen, lLen) when rLen === width && lLen === height =>
-        // let r =
-        //   currentLayer
-        //   |> List.map((row: list(int)) =>
-        //        Js.Array.joinWith("", Array.of_list(row))
-        //      )
-        //   |> Array.of_list
-        //   |> Js.Array.joinWith("\n");
-
-        // Js.log2("R\n", r);
-
         let newLayer = [[nextDigit]];
         let layers = [newLayer, currentLayer, ...layers];
         (newLayer, layers);
 
       // New row in the same layer, start with new digit
-      | (rLen, lLen) when rLen === width =>
-        // Js.log(Printf.sprintf("NEW ROW rLen: %d, lLen: %d", rLen, lLen));
+      | (rLen, _) when rLen === width =>
         let sameLayer = [[nextDigit], currentRow, ...rows];
         let layers = [sameLayer, ...layers];
         (sameLayer, layers);
 
       // New digit, same row, same layer
-      | (rLen, lLen) =>
-        let row = [nextDigit, ...currentRow];
-        let layer = [row, ...rows];
-        let layers = [layer, ...layers];
-
-        // Js.log(Printf.sprintf("rLen: %d, lLen: %d", rLen, lLen));
-
-        (layer, layers);
+      | (_, _) =>
+        let sameRow = [nextDigit, ...currentRow];
+        let sameLayer = [sameRow, ...rows];
+        let layers = [sameLayer, ...layers];
+        (sameLayer, layers);
       };
 
-    // Js.log2(" - next", nextDigit);
     splitLayers(~currentLayer=layer, ~layers, width, height, rest);
 
   | ([], _, layers) => layers
@@ -79,17 +64,6 @@ let layers = splitLayers(25, 6, input);
 let digitCount = (digit: int, layer: list(list(int))) => {
   layer |> List.concat |> List.filter(i => i === digit) |> List.length;
 };
-
-// let layers =
-//   splitLayers(
-//     3,
-//     2,
-//     "123456789012"
-//     |> Js.String.split("")
-//     |> Array.map(int_of_string)
-//     |> Array.to_list
-//     |> List.rev,
-//   );
 
 Js.log2("Layers", List.length(layers));
 
@@ -122,3 +96,61 @@ let part1 = layers => {
 };
 
 Js.log2("Part 1: ", part1(layers));
+
+let layerToArray = (layer: list(list(int))) => {
+  layer |> List.map(Array.of_list) |> Array.of_list;
+};
+
+let layersToArray = (layers: list(list(list(int)))) => {
+  layers |> Array.of_list |> Array.map(layerToArray);
+};
+
+let layerArrs = layersToArray(layers);
+
+exception ColorException(int, int);
+let determineColor = (frontPixel: int, rearPixel: int) => {
+  switch (frontPixel, rearPixel) {
+  | (0, _) => 0
+  | (1, _) => 1
+  | (2, p) => p
+  | (f, r) => raise(ColorException(f, r))
+  };
+};
+
+let flattenImage = (width: int, height: int, image: list(list(list(int)))) => {
+  image
+  |> List.rev
+  |> layersToArray
+  |> Array.fold_left(
+       (flattened, layer) =>
+         flattened
+         |> Array.mapi((cIndex, row) =>
+              row
+              |> Array.mapi((rIndex, pixel) => {
+                   let front = layer[cIndex][rIndex];
+                   let color = determineColor(front, pixel);
+                   color;
+                 })
+            ),
+       Array.make(height, Array.make(width, 2)),
+     );
+};
+
+let flattened = flattenImage(25, 6, layers);
+
+let toString = (image: array(array(int))) => {
+  image
+  |> Array.map(row =>
+       row
+       |> Array.map(pixel =>
+            switch (pixel) {
+            | 1 => "#"
+            | 0 => " "
+            | _ => "?"
+            }
+          )
+       |> Js.Array.joinWith("")
+     );
+};
+
+Js.log(flattened |> toString);
